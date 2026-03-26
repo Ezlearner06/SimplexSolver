@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Verifiable Solver</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "secondary": "#7fd6cb",
+                        "surface-container-highest": "#353535",
+                        "inverse-surface": "#e2e2e2",
+                        "surface-container-high": "#2a2a2a",
+                        "inverse-on-surface": "#303030",
+                        "secondary-container": "#007067",
+                        "on-tertiary-container": "#4a4d4f",
+                        "secondary-fixed": "#9bf2e7",
+                        "on-primary-fixed": "#230851",
+                        "on-surface": "#e2e2e2",
+                        "error": "#ffb4ab",
+                        "surface-bright": "#393939",
+                        "surface-container-lowest": "#0e0e0e",
+                        "background": "#131313",
+                        "on-primary-container": "#564085",
+                        "on-background": "#e2e2e2",
+                        "primary-fixed-dim": "#d2bcff",
+                        "surface-dim": "#131313",
+                        "surface-variant": "#353535",
+                        "outline": "#948e9b",
+                        "error-container": "#93000a",
+                        "on-primary": "#392266",
+                        "on-secondary": "#003733",
+                        "primary": "#e2d2ff",
+                        "outline-variant": "#494550",
+                        "surface-container-low": "#1b1b1b",
+                        "on-tertiary": "#2d3133",
+                        "on-surface-variant": "#cbc4d1",
+                        "primary-container": "#cab1ff",
+                        "surface-container": "#1f1f1f",
+                        "on-secondary-container": "#99f0e5",
+                        "on-error-container": "#ffdad6",
+                        "primary-fixed": "#eaddff",
+                        "surface": "#131313"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #131313;
+            color: #e2e2e2;
+            overflow-x: hidden;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        /* Stitch Base Styles */
+        .glass-panel {
+            background: rgba(31, 31, 31, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(73, 69, 80, 0.15);
+        }
+        .grid-pattern {
+            background-image: linear-gradient(rgba(73, 69, 80, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(73, 69, 80, 0.05) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+        .ghost-border { border: 1px solid rgba(73, 69, 80, 0.15); }
+        .glow-secondary { filter: drop-shadow(0 0 12px rgba(127, 214, 203, 0.2)); }
+        .glow-primary { filter: drop-shadow(0 0 20px rgba(226, 210, 255, 0.15)); }
+        .pivot-glow { box-shadow: 0 0 15px rgba(127, 214, 203, 0.2); }
+        .nav-link.active {
+            color: #CAB1FF !important;
+            border-bottom: 2px solid #CAB1FF;
+            padding-bottom: 0.25rem;
+        }
+        .view-section { display: none; }
+        .view-section.active { display: block; }
+    </style>
+</head>
+<body class="font-body selection:bg-primary-container/30 min-h-screen flex">
+    
+    <!-- Sidebar -->
+    <aside class="hidden lg:flex flex-col fixed left-0 top-0 h-full w-64 border-r border-[#494550]/15 bg-[#0e0e0e] flex-col py-8 px-4 gap-6 z-40">
+        <div class="px-2 mb-4">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-primary-container flex items-center justify-center">
+                    <span class="material-symbols-outlined text-on-primary-container text-lg" style="font-variation-settings: 'FILL' 1;">terminal</span>
+                </div>
+                <div>
+                    <div class="text-lg font-black text-[#CAB1FF] leading-tight font-headline tracking-tighter">Simplex Engine</div>
+                    <div class="text-[10px] uppercase tracking-widest text-[#e2e2e2]/40 font-label">Precision v2.4</div>
+                </div>
+            </div>
+        </div>
+        <button onclick="app.showView('manual')" class="w-full bg-gradient-to-r from-primary to-primary-container text-on-primary font-headline font-bold py-3 rounded-lg text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-all scale-98 active:scale-95 shadow-lg shadow-primary/10">
+            <span class="material-symbols-outlined text-sm">add_circle</span> New Computation
+        </button>
+        <nav class="flex-1 space-y-1 mt-2">
+            <a onclick="app.showView('manual')" class="flex items-center gap-3 px-4 py-3 text-[#e2e2e2]/40 hover:text-[#e2e2e2] transition-all hover:bg-[#1f1f1f] cursor-pointer rounded-lg font-['Manrope'] font-semibold text-sm tracking-wide">
+                <span class="material-symbols-outlined">function</span> Linear Program
+            </a>
+            <a onclick="app.showView('results')" id="sidebar-results" class="flex items-center gap-3 px-4 py-3 text-[#e2e2e2]/40 hover:text-[#e2e2e2] transition-all hover:bg-[#1f1f1f] cursor-pointer rounded-lg font-['Manrope'] font-semibold text-sm tracking-wide hidden">
+                <span class="material-symbols-outlined">analytics</span> Results & Sensitivity
+            </a>
+            <a onclick="app.showView('steps')" id="sidebar-steps" class="flex items-center gap-3 px-4 py-3 text-[#e2e2e2]/40 hover:text-[#e2e2e2] transition-all hover:bg-[#1f1f1f] cursor-pointer rounded-lg font-['Manrope'] font-semibold text-sm tracking-wide hidden">
+                <span class="material-symbols-outlined">layers</span> Simplex Steps
+            </a>
+            <a onclick="app.showView('results')" class="flex items-center gap-3 px-4 py-3 text-[#e2e2e2]/40 hover:text-[#e2e2e2] transition-all hover:bg-[#1f1f1f] cursor-pointer rounded-lg font-['Manrope'] font-semibold text-sm tracking-wide">
+                <span class="material-symbols-outlined">history</span> History
+            </a>
+        </nav>
+        <div class="mt-auto p-4 rounded-xl bg-surface-container-low ghost-border">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-surface-container-highest overflow-hidden flex justify-center items-center">
+                    <span class="material-symbols-outlined text-on-surface-variant">account_circle</span>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-on-surface">Solver Admin</p>
+                    <p class="text-[10px] text-secondary font-label uppercase tracking-widest">Verified node</p>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="lg:ml-64 flex-1 pb-16 flex flex-col min-h-screen relative">
+        <!-- TopNav -->
+        <header class="bg-[#1f1f1f]/60 backdrop-blur-xl shadow-[0_40px_60px_rgba(0,0,0,0.08)] flex justify-between items-center w-full px-8 h-16 sticky top-0 z-50">
+            <div class="flex items-center gap-8">
+                <span class="text-xl font-bold tracking-tighter text-[#e2d2ff] font-headline">Verifiable Solver</span>
+                <nav class="hidden md:flex gap-6 items-center">
+                    <a id="nav-manual" onclick="app.showView('manual')" class="nav-link cursor-pointer font-['Manrope'] font-bold tracking-[0.04em] uppercase text-[10px] text-[#e2e2e2]/60 hover:text-[#e2e2e2] transition-colors">Manual Entry</a>
+                    <a id="nav-upload" onclick="app.showView('upload')" class="nav-link cursor-pointer font-['Manrope'] font-bold tracking-[0.04em] uppercase text-[10px] text-[#e2e2e2]/60 hover:text-[#e2e2e2] transition-colors">File Upload</a>
+                </nav>
+            </div>
+            <div class="flex items-center gap-4">
+                <button class="material-symbols-outlined text-on-surface/60 hover:bg-[#353535]/50 p-2 rounded-full transition-all">dark_mode</button>
+            </div>
+        </header>
+
+        <!-- VIEW: MANUAL ENTRY -->
+        <div id="view-manual" class="view-section active p-8 md:p-12">
+            <header class="relative space-y-2 mb-12">
+                <div class="absolute -top-12 -left-12 w-64 h-64 grid-pattern opacity-40 pointer-events-none"></div>
+                <span class="font-label text-xs uppercase tracking-[0.3em] text-secondary">Solver Workspace</span>
+                <h1 class="font-headline text-5xl font-extrabold tracking-tight text-on-surface">Define Problem</h1>
+                <p class="text-on-surface-variant text-sm max-w-xl leading-relaxed">Input your linear programming variables and constraints below. The system will automatically generate the standard form for real-time verification.</p>
+            </header>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 relative z-10">
+                <div class="lg:col-span-8 space-y-8">
+                    <!-- Objective Function -->
+                    <section class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h2 class="font-headline text-xl font-bold flex items-center gap-2">
+                                <span class="w-1 h-6 bg-primary rounded-full"></span> Objective Function
+                            </h2>
+                            <div class="flex bg-surface-container rounded-full p-1 border border-outline-variant/10">
+                                <button id="btn-goal-max" onclick="app.setGoal('maximize')" class="px-4 py-1 text-xs font-bold rounded-full bg-primary text-on-primary">MAX</button>
+                                <button id="btn-goal-min" onclick="app.setGoal('minimize')" class="px-4 py-1 text-xs font-bold rounded-full text-on-surface-variant hover:text-on-surface">MIN</button>
+                            </div>
+                        </div>
+                        <div class="glass-panel rounded-xl p-8 relative overflow-hidden">
+                            <div class="absolute inset-0 grid-pattern opacity-10"></div>
+                            <div class="relative flex flex-wrap items-center gap-4 font-headline text-2xl font-bold" id="form-objective">
+                                <span class="text-secondary">Z =</span>
+                                <!-- injected by JS -->
+                                <button onclick="app.addVariable()" class="w-10 h-10 rounded-full border border-dashed border-outline-variant flex items-center justify-center text-on-surface-variant hover:text-primary hover:border-primary transition-all ml-2">
+                                    <span class="material-symbols-outlined">add</span>
+                                </button>
+                                <button onclick="app.removeVariable()" class="w-10 h-10 rounded-full border border-dashed border-error flex items-center justify-center text-on-surface-variant hover:text-error hover:border-error transition-all">
+                                    <span class="material-symbols-outlined">remove</span>
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+                    
+                    <!-- Constraints -->
+                    <section class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h2 class="font-headline text-xl font-bold flex items-center gap-2">
+                                <span class="w-1 h-6 bg-secondary rounded-full"></span> Constraints
+                            </h2>
+                        </div>
+                        <div class="space-y-4" id="form-constraints">
+                            <!-- injected by JS -->
+                        </div>
+                        <button onclick="app.addConstraint()" class="w-full py-4 border-2 border-dashed border-outline-variant/30 rounded-xl flex items-center justify-center gap-2 text-on-surface-variant hover:border-secondary/50 hover:text-secondary hover:bg-secondary/5 transition-all">
+                            <span class="material-symbols-outlined">add_circle</span>
+                            <span class="font-headline font-bold text-sm tracking-widest uppercase">Add Constraint</span>
+                        </button>
+                    </section>
+                </div>
+
+                <!-- Right Sidebar Prep/Solve -->
+                <div class="lg:col-span-4 bg-surface-container-low border border-outline-variant/10 rounded-xl p-8 flex flex-col gap-8 shadow-xl">
+                    <div class="space-y-4">
+                        <h3 class="font-headline text-lg font-bold flex items-center justify-between">
+                            Form Preview <span class="material-symbols-outlined text-on-surface-variant text-sm">info</span>
+                        </h3>
+                        <div class="bg-surface-container-lowest rounded-xl p-6 font-mono text-sm leading-relaxed text-secondary/80 border border-outline-variant/5">
+                            <div class="mb-4 pb-4 border-b border-outline-variant/10">
+                                <p class="text-[10px] uppercase text-outline-variant mb-2">Objective</p>
+                                <p class="text-on-surface" id="preview-obj">Z - 0 = 0</p>
+                            </div>
+                            <div class="space-y-2">
+                                <p class="text-[10px] uppercase text-outline-variant mb-2">Constraints</p>
+                                <div id="preview-cons" class="text-on-surface text-xs leading-loose"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-auto space-y-6">
+                        <button id="btn-solve" onclick="app.apiSolve()" class="w-full py-5 rounded-lg bg-gradient-to-r from-primary to-primary-container text-on-primary font-headline text-lg font-black tracking-tight flex items-center justify-center gap-3 shadow-[0_12px_40px_-10px_rgba(202,177,255,0.4)] hover:shadow-[0_15px_50px_-12px_rgba(202,177,255,0.6)] hover:-translate-y-0.5 transition-all active:translate-y-0">
+                            Solve Problem <span class="material-symbols-outlined">bolt</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW: FILE UPLOAD -->
+        <div id="view-upload" class="view-section p-8 md:p-12 relative">
+            <div class="absolute inset-0 bg-mesh opacity-30 pointer-events-none"></div>
+            <header class="space-y-4 mb-12 relative z-10 w-full max-w-4xl mx-auto">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary-container/20 border border-secondary/10">
+                    <span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+                    <span class="text-[10px] font-label font-bold text-secondary tracking-widest uppercase">System Ready</span>
+                </div>
+                <h1 class="text-5xl md:text-7xl font-headline font-extrabold tracking-tighter text-on-surface">
+                    File <span class="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">Verification</span>
+                </h1>
+                <p class="text-on-surface-variant text-lg max-w-2xl leading-relaxed">
+                    Upload your constraints matrix or linear program file (.csv, .json). Our engine will verify mathematical integrity before initiating the Simplex algorithm.
+                </p>
+            </header>
+
+            <section class="max-w-4xl mx-auto space-y-8 relative z-10">
+                <div class="relative group">
+                    <div class="absolute -inset-1 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                    <div class="relative glass-panel ghost-border rounded-xl p-12 border-2 border-dashed border-outline-variant/30 flex flex-col items-center justify-center gap-6 text-center hover:border-secondary/50 transition-all duration-300">
+                        <div class="w-20 h-20 rounded-2xl bg-surface-container-high flex items-center justify-center shadow-xl">
+                            <span class="material-symbols-outlined text-4xl text-primary">upload_file</span>
+                        </div>
+                        <div class="space-y-2">
+                            <h3 class="text-2xl font-headline font-bold text-on-surface">Drop File to Verify</h3>
+                            <p class="text-on-surface-variant text-sm font-label">Supports .csv, .json</p>
+                        </div>
+                        <input type="file" id="file-upload" class="hidden" accept=".csv,.json" onchange="app.handleFileUpload(event)">
+                        <label for="file-upload" class="bg-surface-variant/40 ghost-border px-8 py-3 rounded-lg text-primary font-bold hover:bg-surface-variant transition-all cursor-pointer">
+                            Select File
+                        </label>
+                    </div>
+                </div>
+                
+                <div id="upload-preview" class="hidden glass-panel py-6 px-8 rounded-xl font-mono text-sm border-l-4 border-l-secondary">
+                    <!-- File preview injected here -->
+                </div>
+                
+                <button id="btn-upload-solve" onclick="app.apiSolve()" class="hidden w-full py-5 rounded-lg bg-gradient-to-r from-primary to-primary-container text-on-primary font-headline text-lg font-black tracking-tight flex items-center justify-center gap-3">
+                    Analyze & Solve File <span class="material-symbols-outlined">bolt</span>
+                </button>
+            </section>
+        </div>
+
+        <!-- VIEW: RESULTS & SENSITIVITY -->
+        <div id="view-results" class="view-section p-8 max-w-7xl mx-auto w-full">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <!-- Left Content -->
+                <section class="col-span-12 lg:col-span-8 space-y-8">
+                    <!-- Hero Result -->
+                    <div class="relative overflow-hidden rounded-xl bg-surface-container p-8 ghost-border glow-primary">
+                        <div class="absolute top-0 right-0 p-4 opacity-10"><span class="material-symbols-outlined text-9xl">verified</span></div>
+                        <div class="relative z-10">
+                            <span id="res-status-badge" class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20 text-secondary text-[10px] font-bold tracking-widest uppercase mb-4">
+                                <span class="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span> Optimization Complete
+                            </span>
+                            <h2 id="res-status-text" class="text-on-surface-variant font-headline text-sm font-semibold tracking-wide mb-2 uppercase">Optimal Solution Found</h2>
+                            <h3 class="text-6xl md:text-7xl font-headline font-extrabold tracking-tighter text-primary break-all" id="res-opt-z">Z = 0.00</h3>
+                        </div>
+                    </div>
+
+                    <!-- Variables Matrix -->
+                    <div class="space-y-4">
+                        <h4 class="text-xs font-bold font-headline tracking-widest text-on-surface-variant uppercase ml-1">Decision Variables</h4>
+                        <div id="res-variables-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <!-- Variables injected by JS -->
+                        </div>
+                    </div>
+
+                    <!-- SENSITIVITY ANALYSIS UI -->
+                    <div id="res-sensitivity-panel" class="hidden space-y-6">
+                        <div class="flex items-center gap-3">
+                           <span class="material-symbols-outlined text-secondary text-2xl" style="font-variation-settings:'FILL' 1;">analytics</span>
+                           <h3 class="text-xl font-bold font-headline text-on-surface">Sensitivity / Post-Optimality Analysis</h3>
+                        </div>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <!-- Objective Ranges -->
+                            <div class="glass-panel rounded-xl ghost-border overflow-hidden">
+                                <div class="bg-surface-container px-4 py-3 border-b border-outline-variant/10">
+                                    <h4 class="text-sm font-bold text-on-surface">🎯 Objective Coef. Ranges</h4>
+                                </div>
+                                <div class="overflow-auto p-0 max-h-64 scrollbar-thin scrollbar-thumb-surface-variant">
+                                    <table class="w-full text-xs font-body text-left">
+                                        <thead class="text-outline-variant border-b border-outline-variant/20 uppercase bg-surface-container sticky top-0">
+                                            <tr><th class="px-4 py-2">Var</th><th class="px-4 py-2">Current</th><th class="px-4 py-2">Lower</th><th class="px-4 py-2">Upper</th></tr>
+                                        </thead>
+                                        <tbody id="res-table-obj" class="text-on-surface px-4"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <!-- RHS Ranges -->
+                            <div class="glass-panel rounded-xl ghost-border overflow-hidden">
+                                <div class="bg-surface-container px-4 py-3 border-b border-outline-variant/10">
+                                    <h4 class="text-sm font-bold text-on-surface">🔒 RHS & Shadow Prices</h4>
+                                </div>
+                                <div class="overflow-auto p-0 max-h-64 scrollbar-thin scrollbar-thumb-surface-variant">
+                                    <table class="w-full text-xs font-body text-left">
+                                        <thead class="text-outline-variant border-b border-outline-variant/20 uppercase bg-surface-container sticky top-0">
+                                            <tr><th class="px-4 py-2">Cons</th><th class="px-4 py-2">RHS</th><th class="px-4 py-2 text-secondary">Shadow</th><th class="px-4 py-2">Lower</th><th class="px-4 py-2">Upper</th></tr>
+                                        </thead>
+                                        <tbody id="res-table-rhs" class="text-on-surface px-4"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GRAPHICAL SOLUTION UI -->
+                    <div id="res-graphical-panel" class="hidden space-y-6 pt-6 border-t border-outline-variant/20">
+                        <div class="flex items-center gap-3 mb-4">
+                           <span class="material-symbols-outlined text-primary text-2xl">monitoring</span>
+                           <h3 class="text-xl font-bold font-headline text-on-surface">Graphical Solution</h3>
+                        </div>
+                        <div class="glass-panel rounded-xl ghost-border p-2">
+                            <div id="plotly-div" style="width:100%; height:500px;"></div>
+                        </div>
+                    </div>
+
+                </section>
+
+                <!-- Right Sidebar (History + PDF) -->
+                <aside class="col-span-12 lg:col-span-4 space-y-6">
+                    <button onclick="app.downloadPdf()" class="w-full py-4 bg-gradient-to-r from-surface-container-high to-surface-container ghost-border rounded-xl text-xs font-bold font-headline tracking-widest uppercase text-secondary hover:text-white hover:bg-surface-container flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95">
+                        <span class="material-symbols-outlined">picture_as_pdf</span> Generate PDF Report
+                    </button>
+                    <button onclick="app.showView('steps')" class="w-full py-4 bg-surface-container-low ghost-border rounded-xl text-xs font-bold font-headline tracking-widest uppercase text-on-surface-variant hover:text-on-surface transition-all active:scale-95 flex items-center justify-center gap-2">
+                        <span class="material-symbols-outlined">layers</span> View Tableau Steps
+                    </button>
+                    
+                    <div class="border-t border-outline-variant/20 pt-6"></div>
+                    
+                    <div class="flex items-center justify-between px-1">
+                        <h4 class="text-xs font-bold font-headline tracking-widest text-on-surface-variant uppercase">History Log</h4>
+                    </div>
+                    <div class="space-y-3" id="history-list">
+                        <!-- Injected by history check -->
+                        <div class="text-sm text-outline-variant italic p-4">No history saved.</div>
+                    </div>
+                </aside>
+            </div>
+        </div>
+
+        <!-- VIEW: SIMPLEX STEPS (TABLEAU) -->
+        <div id="view-steps" class="view-section p-8 md:p-12 w-full max-w-7xl mx-auto grid-pattern">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
+                <div>
+                    <span class="text-secondary font-bold text-xs tracking-[0.3em] uppercase mb-2 block">Step-by-Step Execution</span>
+                    <h1 class="text-5xl font-extrabold font-headline tracking-tighter text-on-surface" id="step-title">Iteration 0</h1>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="app.stepTableau(-1)" class="px-6 py-3 rounded-lg bg-surface-container-high hover:bg-surface-container-highest ghost-border text-on-surface font-semibold flex items-center gap-2 transition-all active:scale-95">
+                        <span class="material-symbols-outlined">arrow_back_ios</span> Prev
+                    </button>
+                    <button onclick="app.stepTableau(1)" class="px-6 py-3 rounded-lg bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold flex items-center gap-2 transition-all active:scale-95">
+                        Next <span class="material-symbols-outlined">arrow_forward_ios</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="glass-panel p-8 rounded-xl shadow-2xl relative overflow-x-auto ghost-border">
+                <div id="tableau-container"></div>
+            </div>
+            
+            <div class="mt-8 glass-panel p-6 rounded-xl flex items-center gap-4 ghost-border border-l-4 border-l-secondary">
+                <span class="material-symbols-outlined text-secondary">info</span>
+                <p class="text-sm text-on-surface-variant font-body" id="tableau-info">Viewing Tableau</p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="mt-auto bg-[#0e0e0e] border-t border-[#494550]/10 flex justify-between items-center px-6 h-8 fixed bottom-0 w-full z-50">
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse shadow-[0_0_8px_rgba(127,214,203,0.4)]"></span>
+                    <span class="font-['Inter'] text-[10px] tracking-[0.1em] uppercase text-secondary">Engine Active</span>
+                </div>
+                <span class="font-['Inter'] text-[10px] tracking-[0.1em] uppercase text-[#e2e2e2]/40" id="footer-latency">Latency: --ms</span>
+            </div>
+            <div class="flex items-center gap-6">
+                <span class="font-['Inter'] text-[10px] tracking-[0.1em] uppercase text-[#e2e2e2]/40 hidden md:block">Verifiable v2.4</span>
+            </div>
+        </footer>
+    </main>
+    <script src="/static/app.js"></script>
+</body>
+</html>

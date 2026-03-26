@@ -232,11 +232,9 @@ pytest tests/
 
 ---
 
-## 📄 License
+## Poster 
+<img width="1842" height="2304" alt="Simple_Poster" src="https://github.com/user-attachments/assets/dd28e095-dfb0-4cc7-aa95-0b2684dc7ae6" />
 
-This project is licensed under the [MIT License](LICENSE).
-
----
 
 <div align="center">
 

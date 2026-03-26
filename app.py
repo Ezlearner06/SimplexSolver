@@ -180,6 +180,29 @@ def _export_csv(result) -> str:
 
     return output.getvalue()
 
+def render_graphical_solution(problem, result, key_suffix):
+    """Render the interactive graphical LP solver feature if conditions are met."""
+    if result.status == "optimal" and len(problem.get("variables", [])) == 2:
+        st.divider()
+        st.subheader("📊 Graphical Solution")
+        show_graph = st.checkbox("Show Graphical Solution plot for 2-variable LP", key=f"show_graph_{key_suffix}")
+        if show_graph:
+            try:
+                from graphical_solver import plot_graphical_solution
+                c = [float(x) for x in problem["objective"]]
+                A = [[float(x) for x in con["coefficients"]] for con in problem["constraints"]]
+                b = [float(con["rhs"]) for con in problem["constraints"]]
+                signs = [con["sign"].strip() for con in problem["constraints"]]
+                v1, v2 = problem["variables"]
+                x1 = result.variables.get(v1, 0.0)
+                x2 = result.variables.get(v2, 0.0)
+                
+                fig = plot_graphical_solution(c, A, b, signs, (x1, x2), result.optimal_value, problem["goal"])
+                st.pyplot(fig)
+            except Exception as e:
+                import traceback
+                st.error(f"Could not render graphical solution: {e}")
+                st.expander("Show Traceback").code(traceback.format_exc())
 
 # ── Tabs ────────────────────────────────────────────────────────────
 tab_manual, tab_upload, tab_history = st.tabs(["📝 Manual Entry", "📁 Upload File", "📜 History"])
@@ -195,8 +218,14 @@ with tab_manual:
         st.session_state["last_result"] = result
         st.session_state["last_problem"] = problem
         st.session_state["tableau_index"] = 0
+
+    if "last_result" in st.session_state and "last_problem" in st.session_state:
+        result = st.session_state["last_result"]
+        prob = st.session_state["last_problem"]
         render_solution_summary(result)
         render_tableau_viewer(result)
+        
+        render_graphical_solution(prob, result, "manual")
 
         # Download & Save row
         col_dl, col_save = st.columns(2)
@@ -215,7 +244,7 @@ with tab_manual:
                 name = st.text_input("Problem name", value="", key="save_name_manual")
                 if st.button("💾 Save to History", key="save_manual", use_container_width=True):
                     try:
-                        save_problem(problem, result.to_dict(), name)
+                        save_problem(prob, result.to_dict(), name)
                         st.success("Saved to Google Sheets!")
                     except Exception as e:
                         st.error(f"Could not save: {e}")
@@ -284,6 +313,8 @@ with tab_upload:
                         result = st.session_state["upload_result"]
                         render_solution_summary(result)
                         render_tableau_viewer(result)
+                        
+                        render_graphical_solution(problem, result, "upload")
 
                         # Download & Save row
                         col_dl_up, col_save_up = st.columns(2)
@@ -336,11 +367,15 @@ with tab_history:
                             if st.button(f"🔄 Reload & Solve", key=f"reload_{i}"):
                                 with st.spinner("Solving..."):
                                     result = solve(entry["problem"])
-                                st.session_state["last_result"] = result
-                                st.session_state["last_problem"] = entry["problem"]
+                                st.session_state["history_active_idx"] = i
+                                st.session_state["history_result"] = result
                                 st.session_state["tableau_index"] = 0
+
+                            if st.session_state.get("history_active_idx") == i and "history_result" in st.session_state:
+                                result = st.session_state["history_result"]
                                 render_solution_summary(result)
                                 render_tableau_viewer(result)
+                                render_graphical_solution(entry["problem"], result, f"history_{i}")
         except Exception as e:
             st.error(f"Could not load history: {e}")
 

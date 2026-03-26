@@ -1,0 +1,9 @@
+type,x1,x2,x3,x4,x5,sign,RHS
+objective,10,8,6,4,2,maximize,0
+constraint,3,2,1,1,0,<=,100
+constraint,1,4,2,0,1,<=,200
+constraint,2,1,3,1,2,<=,150
+constraint,0,3,1,2,1,<=,120
+constraint,1,1,1,1,1,<=,80
+constraint,4,2,0,3,1,<=,250
+constraint,2,0,4,1,3,<=,180

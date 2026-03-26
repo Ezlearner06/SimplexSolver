@@ -1,0 +1,4 @@
+type,x1,x2,sign,RHS
+objective,2,3,maximize,0
+constraint,1,1,<=,4
+constraint,-1,-1,<=,-10

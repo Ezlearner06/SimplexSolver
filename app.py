@@ -14,11 +14,15 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from engine.simplex import solve
+from engine.sensitivity import compute_sensitivity
 from input.input_handler import render_manual_input_form
 from input.csv_parser import parse_csv
 from input.json_parser import parse_json
 from input.excel_parser import parse_excel
 from renderer.tableau_display import render_solution_summary, render_tableau_viewer
+from renderer.graphical_display import render_graphical_solution
+from renderer.sensitivity_display import render_sensitivity_analysis
+from renderer.pdf_report import generate_pdf_report
 from storage.sheets_connector import save_problem, load_history, is_available as sheets_available
 
 # ── Page Config ─────────────────────────────────────────────────────
@@ -198,18 +202,41 @@ with tab_manual:
         render_solution_summary(result)
         render_tableau_viewer(result)
 
+        # ── Graphical Solution (2-var only) ─────────────────────
+        render_graphical_solution(problem, result)
+
+        # ── Sensitivity Analysis ────────────────────────────────
+        if result.status == "optimal":
+            sens = compute_sensitivity(problem, result)
+            render_sensitivity_analysis(problem, result, sens)
+        else:
+            sens = None
+
         # Download & Save row
-        col_dl, col_save = st.columns(2)
+        col_dl, col_pdf, col_save = st.columns(3)
         with col_dl:
             if result.status == "optimal" and result.tableaux:
                 csv_buf = _export_csv(result)
                 st.download_button(
-                    "⬇️ Download Result CSV",
+                    "⬇️ Download CSV",
                     data=csv_buf,
                     file_name="simplex_result.csv",
                     mime="text/csv",
                     use_container_width=True,
                 )
+        with col_pdf:
+            if result.tableaux:
+                try:
+                    pdf_bytes = generate_pdf_report(problem, result, sens)
+                    st.download_button(
+                        "📄 Download PDF Report",
+                        data=pdf_bytes,
+                        file_name="simplex_report.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+                except Exception as e:
+                    st.error(f"PDF generation failed: {e}")
         with col_save:
             if sheets_available():
                 name = st.text_input("Problem name", value="", key="save_name_manual")
@@ -285,19 +312,43 @@ with tab_upload:
                         render_solution_summary(result)
                         render_tableau_viewer(result)
 
+                        # ── Graphical Solution (2-var only) ─────────
+                        render_graphical_solution(problem, result)
+
+                        # ── Sensitivity Analysis ────────────────────
+                        if result.status == "optimal":
+                            sens_up = compute_sensitivity(problem, result)
+                            render_sensitivity_analysis(problem, result, sens_up)
+                        else:
+                            sens_up = None
+
                         # Download & Save row
-                        col_dl_up, col_save_up = st.columns(2)
+                        col_dl_up, col_pdf_up, col_save_up = st.columns(3)
                         with col_dl_up:
                             if result.status == "optimal" and result.tableaux:
                                 csv_buf = _export_csv(result)
                                 st.download_button(
-                                    "⬇️ Download Result CSV",
+                                    "⬇️ Download CSV",
                                     data=csv_buf,
                                     file_name="simplex_result.csv",
                                     mime="text/csv",
                                     use_container_width=True,
                                     key="download_upload_csv"
                                 )
+                        with col_pdf_up:
+                            if result.tableaux:
+                                try:
+                                    pdf_bytes_up = generate_pdf_report(problem, result, sens_up)
+                                    st.download_button(
+                                        "📄 Download PDF Report",
+                                        data=pdf_bytes_up,
+                                        file_name="simplex_report.pdf",
+                                        mime="application/pdf",
+                                        use_container_width=True,
+                                        key="download_upload_pdf"
+                                    )
+                                except Exception as e:
+                                    st.error(f"PDF generation failed: {e}")
                         with col_save_up:
                             if sheets_available():
                                 name = st.text_input("Problem name", value="", key="save_name_upload")
@@ -363,6 +414,9 @@ with st.sidebar:
         <li>Pivot Cell Highlighting</li>
         <li>Smart Edge Case Detection</li>
         <li>Google Sheets Integration</li>
+        <li>📊 Graphical Solution (2-var)</li>
+        <li>📈 Sensitivity Analysis</li>
+        <li>📄 PDF Report Export</li>
     </ul>
 </div>
 

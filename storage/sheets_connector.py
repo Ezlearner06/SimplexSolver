@@ -3,7 +3,6 @@ Google Sheets Connector: Save/load problem history using Google Sheets API.
 Falls back gracefully if credentials are not available.
 """
 
-import streamlit as st
 import json
 import os
 from datetime import datetime
@@ -123,6 +122,28 @@ def load_history() -> list:
     return history
 
 
+LOCAL_HISTORY_FILE = os.path.join(os.path.dirname(__file__), "..", "history_local.json")
+
+
+def _load_local() -> list:
+    """Load history from local JSON file."""
+    if os.path.exists(LOCAL_HISTORY_FILE):
+        try:
+            with open(LOCAL_HISTORY_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+
+def _save_local(entry: dict):
+    """Append one entry to local JSON file."""
+    history = _load_local()
+    history.insert(0, entry)  # newest first
+    with open(LOCAL_HISTORY_FILE, "w") as f:
+        json.dump(history, f, indent=2)
+
+
 def is_available() -> bool:
     """Check if Google Sheets integration is configured and available."""
     if not SHEETS_AVAILABLE:
@@ -135,3 +156,45 @@ def is_available() -> bool:
         return True
     except Exception:
         return False
+
+
+def save_to_history(problem: dict, result_summary: dict, name: str = "") -> bool:
+    """
+    Save a solved problem. Tries Google Sheets first, falls back to local JSON.
+    Returns True on success.
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    problem_name = name or f"Problem_{timestamp}"
+
+    entry = {
+        "timestamp": timestamp,
+        "name": problem_name,
+        "status": result_summary.get("status", ""),
+        "optimal_value": str(result_summary.get("optimal_value", "")),
+        "iterations": str(result_summary.get("iterations", "")),
+        "problem": problem,
+    }
+
+    if is_available():
+        try:
+            save_problem(problem, result_summary, name=problem_name)
+            return True
+        except Exception:
+            pass
+
+    # Fallback: local JSON
+    _save_local(entry)
+    return True
+
+
+def get_history() -> list:
+    """
+    Load history. Tries Google Sheets first, falls back to local JSON.
+    Returns a list of history dicts.
+    """
+    if is_available():
+        try:
+            return load_history()
+        except Exception:
+            pass
+    return _load_local()

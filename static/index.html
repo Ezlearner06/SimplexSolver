@@ -119,7 +119,7 @@
             <a onclick="app.showView('steps')" id="sidebar-steps" class="flex items-center gap-3 px-4 py-3 text-[#e2e2e2]/40 hover:text-[#e2e2e2] transition-all hover:bg-[#1f1f1f] cursor-pointer rounded-lg font-['Manrope'] font-semibold text-sm tracking-wide hidden">
                 <span class="material-symbols-outlined">layers</span> Simplex Steps
             </a>
-            <a onclick="app.showView('results')" class="flex items-center gap-3 px-4 py-3 text-[#e2e2e2]/40 hover:text-[#e2e2e2] transition-all hover:bg-[#1f1f1f] cursor-pointer rounded-lg font-['Manrope'] font-semibold text-sm tracking-wide">
+            <a onclick="app.showHistoryView()" class="flex items-center gap-3 px-4 py-3 text-[#e2e2e2]/40 hover:text-[#e2e2e2] transition-all hover:bg-[#1f1f1f] cursor-pointer rounded-lg font-['Manrope'] font-semibold text-sm tracking-wide">
                 <span class="material-symbols-outlined">history</span> History
             </a>
         </nav>
@@ -359,17 +359,33 @@
                     <button onclick="app.showView('steps')" class="w-full py-4 bg-surface-container-low ghost-border rounded-xl text-xs font-bold font-headline tracking-widest uppercase text-on-surface-variant hover:text-on-surface transition-all active:scale-95 flex items-center justify-center gap-2">
                         <span class="material-symbols-outlined">layers</span> View Tableau Steps
                     </button>
+                    <button id="btn-save-history" onclick="app.saveToHistory()" class="w-full py-4 bg-secondary/10 border border-secondary/20 rounded-xl text-xs font-bold font-headline tracking-widest uppercase text-secondary hover:bg-secondary/20 transition-all active:scale-95 flex items-center justify-center gap-2">
+                        <span class="material-symbols-outlined">bookmark_add</span> Save to History
+                    </button>
                     
                     <div class="border-t border-outline-variant/20 pt-6"></div>
                     
                     <div class="flex items-center justify-between px-1">
                         <h4 class="text-xs font-bold font-headline tracking-widest text-on-surface-variant uppercase">History Log</h4>
+                        <button onclick="app.loadHistory()" class="text-[10px] text-secondary font-bold uppercase tracking-widest hover:underline">Refresh</button>
                     </div>
                     <div class="space-y-3" id="history-list">
                         <!-- Injected by history check -->
                         <div class="text-sm text-outline-variant italic p-4">No history saved.</div>
                     </div>
                 </aside>
+            </div>
+        </div>
+
+        <!-- VIEW: HISTORY -->
+        <div id="view-history" class="view-section p-8 md:p-12 w-full max-w-7xl mx-auto">
+            <header class="space-y-2 mb-10">
+                <span class="font-label text-xs uppercase tracking-[0.3em] text-secondary">Computation Log</span>
+                <h1 class="font-headline text-5xl font-extrabold tracking-tight text-on-surface">History</h1>
+                <p class="text-on-surface-variant text-sm max-w-xl">All your previously solved problems are listed below.</p>
+            </header>
+            <div class="space-y-4" id="view-history-list">
+                <div class="text-sm text-outline-variant italic p-4">Loading history...</div>
             </div>
         </div>
 

@@ -333,6 +333,105 @@ const app = {
         this.renderTableau();
     },
 
+    async saveToHistory() {
+        if (!this.state.result || !this.state.currentProblemCache) {
+            alert('No solved problem to save. Please solve a problem first.');
+            return;
+        }
+        const name = prompt('Enter a name for this computation (optional):') || '';
+        const btn = document.getElementById('btn-save-history');
+        btn.innerHTML = `<span class="material-symbols-outlined animate-spin">sync</span> Saving...`;
+        btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/history', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    problem: this.state.currentProblemCache,
+                    result: {
+                        status: this.state.result.status,
+                        optimal_value: this.state.result.optimal_value,
+                        iterations: this.state.result.iterations
+                    },
+                    name: name
+                })
+            });
+            if (!res.ok) throw new Error('Failed to save');
+            btn.innerHTML = `<span class="material-symbols-outlined">check_circle</span> Saved!`;
+            btn.className = btn.className.replace('text-secondary', 'text-green-400').replace('border-secondary/20', 'border-green-400/30');
+            await this.loadHistory();
+            setTimeout(() => {
+                btn.innerHTML = `<span class="material-symbols-outlined">bookmark_add</span> Save to History`;
+                btn.className = "w-full py-4 bg-secondary/10 border border-secondary/20 rounded-xl text-xs font-bold font-headline tracking-widest uppercase text-secondary hover:bg-secondary/20 transition-all active:scale-95 flex items-center justify-center gap-2";
+                btn.disabled = false;
+            }, 2000);
+        } catch (e) {
+            alert('Error saving to history: ' + e.message);
+            btn.innerHTML = `<span class="material-symbols-outlined">bookmark_add</span> Save to History`;
+            btn.disabled = false;
+        }
+    },
+
+    async loadHistory() {
+        try {
+            const res = await fetch('/api/history');
+            const history = await res.json();
+            this._renderHistoryList(history, 'history-list', true);
+            this._renderHistoryList(history, 'view-history-list', false);
+        } catch (e) {
+            console.error('Failed to load history', e);
+        }
+    },
+
+    _renderHistoryList(history, containerId, compact) {
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        if (!history || history.length === 0) {
+            el.innerHTML = `<div class="text-sm text-outline-variant italic p-4">No history saved yet. Solve a problem and click "Save to History".</div>`;
+            return;
+        }
+        el.innerHTML = history.map((h, i) => `
+            <div class="glass-panel ghost-border rounded-xl p-4 space-y-2 hover:bg-surface-container transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-on-surface truncate max-w-[60%]">${h.name || 'Unnamed'}</span>
+                    <span class="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${h.status === 'optimal' ? 'bg-secondary/10 text-secondary' : 'bg-error/10 text-error'}">${h.status}</span>
+                </div>
+                <div class="text-[10px] text-outline-variant">${h.timestamp}</div>
+                <div class="flex items-center justify-between mt-1">
+                    <span class="text-sm font-bold text-primary">Z = ${h.optimal_value || '—'}</span>
+                    ${!compact ? `<button onclick="app.loadFromHistory(${i})" class="text-[10px] text-secondary font-bold uppercase tracking-widest hover:underline flex items-center gap-1"><span class="material-symbols-outlined text-sm">restart_alt</span>Reload</button>` : ''}
+                </div>
+            </div>
+        `).join('');
+        // store history for reload
+        this._historyCache = history;
+    },
+
+    loadFromHistory(index) {
+        const h = this._historyCache && this._historyCache[index];
+        if (!h || !h.problem) return;
+        // Restore problem state
+        const p = h.problem;
+        this.state.goal = p.goal || 'maximize';
+        this.state.variables = p.variables || ['x1', 'x2'];
+        this.state.objCoeffs = p.objective || [];
+        this.state.constraints = (p.constraints || []).map((c, i) => ({
+            id: i + 1,
+            coeffs: c.coefficients || [],
+            sign: c.sign || '<=',
+            rhs: c.rhs || 0
+        }));
+        this.state.currentProblemCache = p;
+        this.renderForms();
+        this.showView('manual');
+    },
+
+    showHistoryView() {
+        this.showView('history');
+        this.loadHistory();
+    },
+
     renderTableau() {
         if(!this.state.result) return;
         const i = this.state.currentTableauIdx;

@@ -209,13 +209,28 @@ async def api_upload(file: UploadFile = File(...)):
 
 @app.get("/api/history")
 async def api_history():
-    """Return past solved problems from Google Sheets (or stub if missing)."""
+    """Return past solved problems from Google Sheets or local JSON."""
     try:
         from storage.sheets_connector import get_history
         history = get_history()
         return JSONResponse(content=history)
     except Exception as e:
         return JSONResponse(content=[])
+
+
+@app.post("/api/history")
+async def api_save_history(request: Request):
+    """Save a solved problem to history (Google Sheets or local JSON fallback)."""
+    try:
+        body = await request.json()
+        problem = body.get("problem", {})
+        result = body.get("result", {})
+        name = body.get("name", "")
+        from storage.sheets_connector import save_to_history
+        save_to_history(problem, result, name=name)
+        return JSONResponse(content={"success": True})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 if __name__ == "__main__":

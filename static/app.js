@@ -195,6 +195,42 @@ const app = {
                     }))
                 };
             }
+
+            // --- Intelligent Validation ---
+            if (problem && problem.constraints) {
+                let geCount = 0;
+                let leCount = 0;
+                problem.constraints.forEach(c => {
+                    if (c.sign === '>=') geCount++;
+                    if (c.sign === '<=') leCount++;
+                });
+
+                const isMixed = (geCount > 0 && leCount > 0);
+
+                if (isMixed) {
+                    this.showWarningToast("Mixed constraint types detected. Proceeding with current mode.");
+                } else {
+                    if (problem.goal === 'maximize' && geCount > leCount) {
+                        document.getElementById(btnId).innerHTML = btnId === 'btn-solve' ? `Solve Problem <span class="material-symbols-outlined">bolt</span>` : `Analyze & Solve File <span class="material-symbols-outlined">bolt</span>`;
+                        const switched = await this.showValidationModal("This problem is of Minimization type. Please switch to MIN mode.", 'minimize');
+                        if (switched) {
+                            this.setGoal('minimize');
+                            return this.apiSolve();
+                        }
+                        return; // Block solving
+                    }
+                    if (problem.goal === 'minimize' && leCount > geCount) {
+                        document.getElementById(btnId).innerHTML = btnId === 'btn-solve' ? `Solve Problem <span class="material-symbols-outlined">bolt</span>` : `Analyze & Solve File <span class="material-symbols-outlined">bolt</span>`;
+                        const switched = await this.showValidationModal("This problem is of Maximization type. Please switch to MAX mode.", 'maximize');
+                        if (switched) {
+                            this.setGoal('maximize');
+                            return this.apiSolve();
+                        }
+                        return; // Block solving
+                    }
+                }
+            }
+
             this.state.currentProblemCache = problem; // save for PDF
 
             const res = await fetch('/api/solve', {
@@ -497,6 +533,51 @@ const app = {
         let msg = 'Displaying Tableau iteration step.';
         if(pivot) msg = `Found Pivot at Row <b>${pivot.row}</b>, Column <b>${pivot.column}</b> with value <b>${pivot.value.toFixed(4)}</b>`;
         document.getElementById('tableau-info').innerHTML = msg;
+    },
+
+    showValidationModal(message, targetGoal) {
+        return new Promise(resolve => {
+            const modalHtml = `
+            <div id="validation-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4" style="animation: fadeIn 0.2s ease-out">
+                <div class="bg-surface-container-high rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-error/30 transform transition-all text-center">
+                    <span class="material-symbols-outlined text-5xl text-error mb-4">error</span>
+                    <h3 class="text-xl font-headline font-bold text-on-surface mb-2">Mode Mismatch Detected</h3>
+                    <p class="text-on-surface-variant text-sm mb-6">${message}</p>
+                    <div class="flex gap-3 justify-center">
+                        <button id="val-btn-cancel" class="px-5 py-2.5 rounded-full font-bold text-sm bg-surface-container hover:bg-surface-variant transition-colors text-on-surface border border-outline-variant/30">Cancel</button>
+                        <button id="val-btn-switch" class="px-5 py-2.5 rounded-full font-bold text-sm bg-primary hover:bg-primary/90 transition-colors text-on-primary shadow-lg shadow-primary/20 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-sm">swap_horiz</span> Switch Mode
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            document.getElementById('val-btn-cancel').onclick = () => {
+                document.getElementById('validation-modal').remove();
+                resolve(false);
+            };
+            document.getElementById('val-btn-switch').onclick = () => {
+                document.getElementById('validation-modal').remove();
+                resolve(true);
+            };
+        });
+    },
+
+    showWarningToast(message) {
+        const id = 'toast-' + Math.random().toString(36).substr(2, 9);
+        const toastHtml = `
+        <div id="${id}" class="fixed top-8 left-1/2 transform -translate-x-1/2 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-6 py-3 rounded-full font-bold text-sm shadow-xl z-[100] flex items-center gap-2 backdrop-blur-md transition-opacity duration-300">
+            <span class="material-symbols-outlined text-lg">warning</span>
+            ${message}
+        </div>`;
+        document.body.insertAdjacentHTML('beforeend', toastHtml);
+        setTimeout(() => {
+            const el = document.getElementById(id);
+            if(el) {
+                el.style.opacity = '0';
+                setTimeout(() => el.remove(), 300);
+            }
+        }, 5000);
     }
 };
 

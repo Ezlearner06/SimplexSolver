@@ -22,6 +22,7 @@ class SimplexResult:
         self.tableaux = []          # list of tableau snapshots (DataFrames)
         self.pivot_cells = []       # list of (row_idx, col_idx) for highlighting
         self.messages = []          # informational messages
+        self.preprocessed_problem = None # Internal converted problem representation
 
     def to_dict(self):
         return {
@@ -30,6 +31,7 @@ class SimplexResult:
             "variables": self.variables,
             "iterations": self.iterations,
             "messages": self.messages,
+            "preprocessed_problem": self.preprocessed_problem
         }
 
 
@@ -64,6 +66,11 @@ def solve(problem: dict) -> SimplexResult:
     is_min = goal == "minimize"
     if is_min:
         objective = [-c for c in objective]
+        result.messages.append("Converted MIN problem to MAX internally by multiplying all objective coefficients by -1.")
+    else:
+        result.messages.append("Problem is MAX. No objective conversion needed.")
+
+    converted_constraints = []
 
     # ── Build augmented matrix (Standard Form) ──────────────────────
     # Columns: decision vars | slack/surplus/artificial | RHS
@@ -88,6 +95,21 @@ def solve(problem: dict) -> SimplexResult:
                 sign = ">="
             elif sign == ">=":
                 sign = "<="
+            result.messages.append(f"Constraint {i+1}: RHS was negative. Multiplied by -1 and reversed the inequality to '{sign}'.")
+
+        # Record preprocessing
+        if sign == ">=":
+            result.messages.append(f"Constraint {i+1}: Marked as '>=' constraint (will use surplus and Big-M artificial variable to keep RHS positive).")
+        elif sign == "=":
+            result.messages.append(f"Constraint {i+1}: Marked as '=' constraint (will use Big-M artificial variable).")
+        else:
+            result.messages.append(f"Constraint {i+1}: Marked as '<=' constraint (standard form ready).")
+
+        converted_constraints.append({
+            "coefficients": coeffs,
+            "sign": sign,
+            "rhs": rhs
+        })
 
         if sign == "<=":
             slack_count += 1
@@ -202,7 +224,16 @@ def solve(problem: dict) -> SimplexResult:
             opt_val = tableau[0, -1]
             if is_min:
                 opt_val = -opt_val
+                result.messages.append(f"Final Step: Since initial goal was MIN, converted internal MAX optimal Z ({tableau[0, -1]}) back to MIN ({opt_val}) by multiplying by -1.")
             result.optimal_value = round(opt_val, 6)
+            
+            # Attach the preprocessed problem to the result
+            result.preprocessed_problem = {
+                "goal": "maximize" if is_min else goal,
+                "variables": variables,
+                "objective": objective,
+                "constraints": converted_constraints
+            }
 
             for v in variables:
                 if v in col_labels:

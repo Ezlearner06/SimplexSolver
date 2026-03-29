@@ -23,7 +23,7 @@ from renderer.tableau_display import render_solution_summary, render_tableau_vie
 from renderer.graphical_display import render_graphical_solution
 from renderer.sensitivity_display import render_sensitivity_analysis
 from renderer.pdf_report import generate_pdf_report
-from storage.sheets_connector import save_problem, load_history, is_available as sheets_available
+from storage.sheets_connector import save_problem, load_history, is_available as sheets_available, is_sheets_configured
 
 # ── Page Config ─────────────────────────────────────────────────────
 st.set_page_config(
@@ -243,11 +243,11 @@ with tab_manual:
                 if st.button("💾 Save to History", key="save_manual", use_container_width=True):
                     try:
                         save_problem(problem, result.to_dict(), name)
-                        st.success("Saved to Google Sheets!")
+                        st.success("Saved to History!")
                     except Exception as e:
                         st.error(f"Could not save: {e}")
             else:
-                st.info("Google Sheets not configured. Set GOOGLE_SHEET_ID and credentials to enable history.")
+                st.info("Storage is not available.")
 
 # ══════════════════════════════════════════════════════════════════════
 # TAB 2: File Upload
@@ -355,11 +355,11 @@ with tab_upload:
                                 if st.button("💾 Save to History", key="save_upload", use_container_width=True):
                                     try:
                                         save_problem(problem, result.to_dict(), name)
-                                        st.success("Saved to Google Sheets!")
+                                        st.success("Saved to History!")
                                     except Exception as e:
                                         st.error(f"Could not save: {e}")
                             else:
-                                st.info("Google Sheets not configured. Set GOOGLE_SHEET_ID and credentials to enable history.")
+                                st.info("Storage is not available.")
 
             except ValueError as e:
                 st.error(f"⚠️ File parsing error: {e}")
@@ -371,8 +371,11 @@ with tab_upload:
 # ══════════════════════════════════════════════════════════════════════
 with tab_history:
     st.subheader("📜 Problem History")
+    if not is_sheets_configured():
+        st.info("Using Local File Storage for history. To sync across devices, configure Google Sheets (`GOOGLE_SHEET_ID` and credentials).")
+        
     if not sheets_available():
-        st.warning("Google Sheets is not configured. To enable history, set the `GOOGLE_SHEET_ID` environment variable and provide a `credentials.json` file.")
+        st.warning("History storage is unavailable.")
     else:
         try:
             history = load_history()

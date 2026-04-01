@@ -195,6 +195,111 @@ const app = {
                     }))
                 };
             }
+
+            // Mode mismatch detection
+            if (problem && problem.constraints && problem.constraints.length > 0) {
+                const signs = problem.constraints.map(c => c.sign.trim());
+                const allLeq = signs.every(s => s === '<=');
+                const allGeq = signs.every(s => s === '>=');
+                const goal = problem.goal.toLowerCase();
+
+                const showMismatchModal = (msg) => {
+                    return new Promise((resolve) => {
+                        const modal = document.getElementById('mismatch-modal');
+                        const content = document.getElementById('mismatch-modal-content');
+                        const text = document.getElementById('mismatch-modal-text');
+                        const btnCancel = document.getElementById('mismatch-btn-cancel');
+                        const btnConfirm = document.getElementById('mismatch-btn-confirm');
+                        
+                        text.innerHTML = msg;
+                        modal.classList.remove('opacity-0', 'pointer-events-none');
+                        content.classList.remove('scale-95');
+                        content.classList.add('scale-100');
+                        
+                        const cleanup = (result) => {
+                            modal.classList.add('opacity-0', 'pointer-events-none');
+                            content.classList.remove('scale-100');
+                            content.classList.add('scale-95');
+                            btnCancel.onclick = null;
+                            btnConfirm.onclick = null;
+                            resolve(result);
+                        };
+                        
+                        btnCancel.onclick = () => cleanup(false);
+                        btnConfirm.onclick = () => cleanup(true);
+                    });
+                };
+
+                if (goal === 'minimize' && allLeq) {
+                    const switchMode = await showMismatchModal(
+                        'This problem is of Maximization type (all constraints use ≤).<br/><br/>Please switch to MAX mode.'
+                    );
+                    if (switchMode) {
+                        problem.goal = 'maximize';
+                        this.state.goal = 'maximize';
+                        this.setGoal('maximize');
+                    } else {
+                        return;
+                    }
+                } else if (goal === 'maximize' && allGeq) {
+                    const switchMode = await showMismatchModal(
+                        'This problem is of Minimization type (all constraints use ≥).<br/><br/>Please switch to MIN mode.'
+                    );
+                    if (switchMode) {
+                        problem.goal = 'minimize';
+                        this.state.goal = 'minimize';
+                        this.setGoal('minimize');
+                    } else {
+                        return;
+                    }
+                }
+                // Detect if the problem requires Artificial Variables
+                // Standard Simplex requires the origin to be feasible.
+                // It only supports <= constraints with positive RHS (needs only Slack).
+                // Analysis of each constraint:
+                // (=) ALWAYS needs Artificial.
+                // (>= with +ve RHS) Needs Surplus + Artificial.
+                // (<= with -ve RHS) Multiplied by -1 becomes >= with +ve RHS -> Needs Surplus + Artificial.
+                // (>= with -ve RHS) Multiplied by -1 becomes <= with +ve RHS -> Needs ONLY Slack -> Supported!
+                const needsArtificial = problem.constraints.some(c => {
+                    const sign = c.sign.trim();
+                    const rhs = parseFloat(c.rhs);
+                    if (sign === '=') return true;
+                    if (sign === '>=' && rhs > 0) return true;
+                    if (sign === '<=' && rhs < 0) return true;
+                    return false;
+                });
+
+                if (needsArtificial) {
+                    const methodModal = document.getElementById('method-modal');
+                    const methodContent = document.getElementById('method-modal-content');
+                    const methodText = document.getElementById('method-modal-text');
+                    const methodBadges = document.getElementById('method-modal-methods');
+                    const methodOk = document.getElementById('method-modal-ok');
+
+                    methodText.innerHTML = `Standard Simplex cannot be applied.<br/><br/>This problem contains constraints that require <strong>Artificial Variables</strong> (e.g., ≥ with positive RHS). Please use one of the following methods:`;
+                    methodBadges.innerHTML = `
+                        <span class="px-4 py-1.5 rounded-full bg-primary/15 text-primary text-xs font-bold border border-primary/20">Big M Method</span>
+                        <span class="px-4 py-1.5 rounded-full bg-secondary/15 text-secondary text-xs font-bold border border-secondary/20">Two-Phase Simplex</span>
+                    `;
+
+                    methodModal.classList.remove('opacity-0', 'pointer-events-none');
+                    methodContent.classList.remove('scale-95');
+                    methodContent.classList.add('scale-100');
+
+                    await new Promise((resolve) => {
+                        methodOk.onclick = () => {
+                            methodModal.classList.add('opacity-0', 'pointer-events-none');
+                            methodContent.classList.remove('scale-100');
+                            methodContent.classList.add('scale-95');
+                            methodOk.onclick = null;
+                            resolve();
+                        };
+                    });
+                    return; // Abort solving
+                }
+            }
+
             this.state.currentProblemCache = problem; // save for PDF
 
             const res = await fetch('/api/solve', {
@@ -205,6 +310,14 @@ const app = {
             const result = await res.json();
             
             this.state.result = result;
+            
+            // If the engine returned an error (invalid for Simplex), show popup
+            if (result.status === 'error') {
+                const msgs = (result.messages || []).join('\n');
+                alert(msgs || 'This problem cannot be solved using the Simplex Method. Please try another method.');
+                return;
+            }
+            
             this.state.currentTableauIdx = (result.tableaux || []).length > 0 ? result.tableaux.length - 1 : 0;
             
             this.renderResults();
@@ -261,6 +374,43 @@ const app = {
             badge.className = "inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[10px] font-bold tracking-widest uppercase mb-4 text-error bg-error/10 border-error/20";
             badge.innerHTML = `<span class="material-symbols-outlined text-[10px]">error</span> Optimization Failed`;
             document.getElementById('res-opt-z').innerText = (r.status === 'unbounded') ? 'Z = ∞' : 'Z = ---';
+        }
+
+        // Standard Form
+        const stdFormDiv = document.getElementById('res-standard-equations');
+        if (r.standard_form && stdFormDiv) {
+            document.getElementById('res-standard-form-details').classList.remove('hidden');
+            let sfHtml = `<div class="mb-3 text-secondary font-bold">${r.standard_form.objective}</div>`;
+            sfHtml += `<div class="space-y-1 pl-4 border-l-2 border-outline-variant/30">`;
+            r.standard_form.constraints.forEach(c => {
+                sfHtml += `<div>${c}</div>`;
+            });
+            sfHtml += `</div>`;
+            stdFormDiv.innerHTML = sfHtml;
+        } else if (document.getElementById('res-standard-form-details')) {
+            document.getElementById('res-standard-form-details').classList.add('hidden');
+        }
+
+        // Method Used & Messages
+        if (r.method_used) {
+            document.getElementById('res-method-badge').innerText = r.method_used;
+        }
+        const msgList = document.getElementById('res-messages-list');
+        if (r.messages && r.messages.length > 0) {
+            let mHtml = '';
+            r.messages.forEach(m => {
+                let icon = 'info', color = 'text-on-surface-variant', bg = 'bg-surface-container-low';
+                if (m.startsWith('🟡')) { icon = 'warning'; color = 'text-yellow-400'; bg = 'bg-yellow-400/5'; }
+                else if (m.startsWith('❌')) { icon = 'error'; color = 'text-error'; bg = 'bg-error/5'; }
+                else if (m.includes('Slack') || m.includes('Surplus') || m.includes('Artificial') || m.includes('Converted')) { icon = 'build'; color = 'text-secondary'; bg = 'bg-secondary/5'; }
+                mHtml += `<div class="flex items-start gap-2 px-4 py-2 rounded-lg ${bg} text-xs font-body leading-relaxed">
+                    <span class="material-symbols-outlined text-sm ${color} mt-0.5">${icon}</span>
+                    <span class="${color}">${m}</span>
+                </div>`;
+            });
+            msgList.innerHTML = mHtml;
+        } else {
+            msgList.innerHTML = '';
         }
 
         // Variables

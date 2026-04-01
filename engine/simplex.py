@@ -1,27 +1,30 @@
 """
 Simplex Method Core Engine
-Handles: Standard form conversion, pivot selection, row operations, iteration loop.
-Detects: Optimal, Infeasible, Unbounded, and Degenerate solutions.
+Standard Simplex only. Shows standardized form conversion.
+Detects: Optimal, Infeasible, Unbounded, Degenerate, Multiple Optimal.
 """
 
 import numpy as np
 import pandas as pd
 from copy import deepcopy
 
-MAX_ITERATIONS = 100
+MAX_ITERATIONS = 200
+EPSILON = 1e-6
 
 
 class SimplexResult:
     """Container for the complete result of a Simplex solve."""
 
     def __init__(self):
-        self.status = ""            # 'optimal', 'infeasible', 'unbounded', 'max_iterations'
+        self.status = ""
         self.optimal_value = None
-        self.variables = {}         # {'x1': 3.0, 'x2': 5.0, ...}
+        self.variables = {}
         self.iterations = 0
-        self.tableaux = []          # list of tableau snapshots (DataFrames)
-        self.pivot_cells = []       # list of (row_idx, col_idx) for highlighting
-        self.messages = []          # informational messages
+        self.tableaux = []
+        self.pivot_cells = []
+        self.messages = []
+        self.method_used = "Standard Simplex"
+        self.standard_form = {"objective": "", "constraints": []}
 
     def to_dict(self):
         return {
@@ -30,27 +33,19 @@ class SimplexResult:
             "variables": self.variables,
             "iterations": self.iterations,
             "messages": self.messages,
+            "method_used": self.method_used,
+            "standard_form": self.standard_form,
         }
 
 
 def solve(problem: dict) -> SimplexResult:
-    """
-    Main entry point. Accepts a problem dict with keys:
-        goal:        'maximize' or 'minimize'
-        variables:   ['x1', 'x2', ...]
-        objective:   [c1, c2, ...]
-        constraints: [{'coefficients': [...], 'sign': '<=', 'rhs': float}, ...]
-
-    Returns a SimplexResult.
-    """
     result = SimplexResult()
 
-    # ── Validate input ──────────────────────────────────────────────
     try:
         _validate_problem(problem)
     except ValueError as e:
         result.status = "error"
-        result.messages.append(str(e))
+        result.messages.append(f"❌ {e}")
         return result
 
     goal = problem["goal"].lower()
@@ -60,215 +55,198 @@ def solve(problem: dict) -> SimplexResult:
     num_vars = len(variables)
     num_constraints = len(constraints)
 
-    # ── Handle minimisation by negating objective ────────────────────
     is_min = goal == "minimize"
     if is_min:
         objective = [-c for c in objective]
+        result.messages.append("Converted Minimization to Maximization (Z → −Z).")
 
-    # ── Build augmented matrix (Standard Form) ──────────────────────
-    # Columns: decision vars | slack/surplus/artificial | RHS
+    # ── Standardization ──────────────────────────────────────────────
     slack_count = 0
-    surplus_count = 0
-    artificial_count = 0
-    artificial_indices = []
-
+    artificial_indices = []   # always empty; prevents NameError in basis loop
     col_names = list(variables)
     rows = []
+    rhs_list = []
+    std_constraints_display = []
 
     for i, con in enumerate(constraints):
         coeffs = list(map(float, con["coefficients"]))
         sign = con["sign"].strip()
         rhs = float(con["rhs"])
 
-        # Ensure RHS >= 0 (multiply through by -1 if needed)
+        # Normalize negative RHS
         if rhs < 0:
             coeffs = [-c for c in coeffs]
             rhs = -rhs
-            if sign == "<=":
-                sign = ">="
-            elif sign == ">=":
-                sign = "<="
+            sign = ">=" if sign == "<=" else "<=" if sign == ">=" else "="
+            result.messages.append(f"🟡 Constraint {i+1}: multiplied by −1 (RHS was negative)")
 
-        if sign == "<=":
-            slack_count += 1
-            col_names.append(f"s{slack_count}")
-            slack_col = [0.0] * len(rows)
-            for r in rows:
-                r.insert(len(r) - 1, 0.0)  # add 0 for this slack in previous rows
-            row = coeffs + [0.0] * (len(col_names) - num_vars - 1) + [1.0, rhs]
-            # Pad to correct length
-            while len(row) < len(col_names) + 1:
-                row.insert(-1, 0.0)
-            rows.append(row)
+        # Reject unsupported forms
+        if sign == "=":
+            result.status = "error"
+            result.messages.append(
+                f"❌ Constraint {i+1} is an equality (=). "
+                "Standard Simplex only handles ≤ constraints. "
+                "Use the Big-M or Two-Phase method for equality constraints."
+            )
+            return result
 
-        elif sign == ">=":
-            surplus_count += 1
-            artificial_count += 1
-            s_name = f"su{surplus_count}"
-            a_name = f"a{artificial_count}"
-            col_names.append(s_name)
-            col_names.append(a_name)
-            artificial_indices.append(len(col_names) - 1)  # 0-based col index of artificial
-            for r in rows:
-                r.insert(len(r) - 1, 0.0)
-                r.insert(len(r) - 1, 0.0)
-            row = coeffs + [0.0] * (len(col_names) - num_vars - 2) + [-1.0, 1.0, rhs]
-            while len(row) < len(col_names) + 1:
-                row.insert(-1, 0.0)
-            rows.append(row)
+        if sign == ">=" and rhs > 0:
+            result.status = "error"
+            result.messages.append(
+                f"❌ Constraint {i+1} is a ≥ constraint (positive RHS). "
+                "Standard Simplex cannot handle this. "
+                "Use the Big-M or Two-Phase method instead."
+            )
+            return result
 
-        elif sign == "=":
-            artificial_count += 1
-            a_name = f"a{artificial_count}"
-            col_names.append(a_name)
-            artificial_indices.append(len(col_names) - 1)
-            for r in rows:
-                r.insert(len(r) - 1, 0.0)
-            row = coeffs + [0.0] * (len(col_names) - num_vars - 1) + [1.0, rhs]
-            while len(row) < len(col_names) + 1:
-                row.insert(-1, 0.0)
-            rows.append(row)
+        if sign == ">=" and rhs == 0:
+            # 0 >= 0 — trivially true, no slack needed
+            result.messages.append(f"🟡 Constraint {i+1} (≥ 0) is trivially satisfied — skipped.")
+            num_constraints -= 1
+            continue
 
-    total_cols = len(col_names)  # excluding RHS
+        # Only <= with rhs >= 0 reaches here — add slack
+        slack_count += 1
+        s_name = f"S{slack_count}"
+        result.messages.append(f"Slack variable {s_name} added to Constraint {i+1}")
+        col_names.append(s_name)
+        for r in rows:
+            r.append(0.0)
+        row = coeffs + [0.0] * (slack_count - 1) + [1.0]
+        rows.append(row)
+        rhs_list.append(rhs)
 
-    # ── Normalise all rows to same width ─────────────────────────────
-    width = total_cols + 1  # +1 for RHS
+        lhs_parts = []
+        for vi, cv in enumerate(coeffs):
+            if abs(cv) < EPSILON:
+                continue
+            if not lhs_parts:
+                lhs_parts.append(f"{cv:g}{variables[vi]}")
+            elif cv > 0:
+                lhs_parts.append(f"+ {cv:g}{variables[vi]}")
+            else:
+                lhs_parts.append(f"- {abs(cv):g}{variables[vi]}")
+        lhs_parts.append(f"+ {s_name}")
+        std_constraints_display.append(" ".join(lhs_parts) + f" = {rhs:g}")
+
+    # ── Standard form display ────────────────────────────────────────
+    orig_obj = list(map(float, problem["objective"]))
+    obj_parts = []
+    for vi, cv in enumerate(orig_obj):
+        if abs(cv) < EPSILON:
+            continue
+        if not obj_parts:
+            obj_parts.append(f"{cv:g}{variables[vi]}")
+        elif cv > 0:
+            obj_parts.append(f"+ {cv:g}{variables[vi]}")
+        else:
+            obj_parts.append(f"- {abs(cv):g}{variables[vi]}")
+
+    goal_label = "Minimize" if is_min else "Maximize"
+    result.standard_form["objective"] = (
+        f"{goal_label} Z = " + " ".join(obj_parts) if obj_parts else f"{goal_label} Z = 0"
+    )
+    result.standard_form["constraints"] = std_constraints_display
+
+    # ── Build tableau ────────────────────────────────────────────────
+    total_cols = len(col_names)
+    width = total_cols + 1
+
     for r in rows:
-        while len(r) < width:
-            r.insert(-1, 0.0)
+        while len(r) < total_cols:
+            r.append(0.0)
 
-    # ── Build objective row (Z row) ──────────────────────────────────
-    # Z row: -c1, -c2, ... 0 (slacks) ... | 0 (RHS)
-    z_row = [-c for c in objective] + [0.0] * (total_cols - num_vars) + [0.0]
+    z_row = [-c for c in objective] + [0.0] * (total_cols - num_vars + 1)
     while len(z_row) < width:
         z_row.insert(-1, 0.0)
 
-    # ── Big-M for artificial variables ───────────────────────────────
-    M = 1e6
-    if artificial_indices:
-        for ai in artificial_indices:
-            z_row[ai] = M  # penalise artificial in objective
-        # Adjust Z row to remove artificial from basis representation
-        for i, row in enumerate(rows):
-            for ai in artificial_indices:
-                if abs(row[ai] - 1.0) < 1e-9:
-                    # This row has this artificial as basic — subtract M * row from z_row
-                    z_row = [z_row[j] - M * row[j] for j in range(width)]
-                    break
-
-    # ── Assemble full tableau (Z row on top) ─────────────────────────
-    tableau = np.array([z_row] + rows, dtype=float)
+    tableau = np.array([z_row] + [r + [rhs_list[i]] for i, r in enumerate(rows)], dtype=float)
     col_labels = col_names + ["RHS"]
 
-    # Track basic variable for each constraint row
+    # ── Initial basis ────────────────────────────────────────────────
     basis = []
-    for i in range(num_constraints):
-        row_idx = i + 1  # +1 because Z row is row 0
-        # find which column is the basic variable (identity column for this row)
-        found_basis = False
+    for i in range(len(rows)):
+        found = False
         for j in range(total_cols):
             col = tableau[:, j]
-            if abs(col[row_idx] - 1.0) < 1e-9 and abs(sum(col) - 1.0) < 1e-9:
+            if abs(col[i + 1] - 1.0) < EPSILON and _is_basic_column(col):
                 basis.append(col_labels[j])
-                found_basis = True
+                found = True
                 break
-        if not found_basis:
-            basis.append(f"a{i+1}" if artificial_indices else f"s{i+1}")
+        if not found:
+            basis.append(f"S{i+1}")
 
-    # ── Snapshot initial tableau ─────────────────────────────────────
     result.tableaux.append(_snapshot(tableau, col_labels, basis))
 
-    # ── Iteration loop ───────────────────────────────────────────────
+    # ── Simplex iterations ───────────────────────────────────────────
     for iteration in range(1, MAX_ITERATIONS + 1):
-        z_row_vals = tableau[0, :total_cols]
+        z_vals = tableau[0, :total_cols]
 
-        # Check optimality: all Z-row coefficients >= 0
-        if all(v >= -1e-9 for v in z_row_vals):
-            # Check if any artificial variable is still in basis with nonzero value
-            if artificial_indices:
-                for bi, bname in enumerate(basis):
-                    if bname.startswith("a"):
-                        val = tableau[bi + 1, -1]
-                        if abs(val) > 1e-9:
-                            result.status = "infeasible"
-                            result.iterations = iteration - 1
-                            result.messages.append("No feasible solution exists. An artificial variable remained in the basis with a nonzero value.")
-                            return result
-
+        if all(v >= -EPSILON for v in z_vals):
             result.status = "optimal"
             result.iterations = iteration - 1
-
-            # Extract solution
             opt_val = tableau[0, -1]
-            if is_min:
-                opt_val = -opt_val
-            result.optimal_value = round(opt_val, 6)
+            result.optimal_value = round(-opt_val if is_min else opt_val, 6)
 
             for v in variables:
-                if v in col_labels:
-                    ci = col_labels.index(v)
-                    col = tableau[:, ci]
-                    if _is_basic_column(col):
-                        row_i = np.argmax(np.abs(col))
-                        result.variables[v] = round(tableau[row_i, -1], 6)
-                    else:
-                        result.variables[v] = 0.0
+                ci = col_labels.index(v) if v in col_labels else -1
+                if ci >= 0 and _is_basic_column(tableau[:, ci]):
+                    row_i = np.argmax(np.abs(tableau[:, ci]))
+                    result.variables[v] = round(tableau[row_i, -1], 6)
                 else:
                     result.variables[v] = 0.0
 
+            # Multiple optimal: non-basic decision variable with zero reduced cost
+            for j in range(num_vars):
+                if abs(z_vals[j]) < EPSILON and col_labels[j] not in basis:
+                    result.messages.append("🟡 Multiple optimal solutions exist")
+                    break
+
             return result
 
-        # ── Pivot column: most negative in Z row ─────────────────────
-        pivot_col = int(np.argmin(z_row_vals))
+        pivot_col = int(np.where(z_vals < -EPSILON)[0][0])
 
-        # ── Ratio test for pivot row ─────────────────────────────────
-        ratios = []
-        for i in range(1, tableau.shape[0]):
-            if tableau[i, pivot_col] > 1e-9:
-                ratios.append((tableau[i, -1] / tableau[i, pivot_col], i))
+        ratios = [
+            (tableau[i, -1] / tableau[i, pivot_col], i)
+            for i in range(1, tableau.shape[0])
+            if tableau[i, pivot_col] > EPSILON
+        ]
 
         if not ratios:
             result.status = "unbounded"
             result.iterations = iteration
-            result.messages.append("Problem is unbounded. No valid ratio test row exists.")
+            result.messages.append("❌ The solution is unbounded")
             return result
 
-        ratios.sort()
+        ratios.sort(key=lambda x: (x[0], x[1]))
         pivot_row = ratios[0][1]
         result.pivot_cells.append((pivot_row, pivot_col))
 
-        # Check degeneracy
-        if abs(ratios[0][0]) < 1e-9:
-            result.messages.append(f"Degeneracy detected at iteration {iteration}.")
+        if abs(ratios[0][0]) < EPSILON:
+            msg = "🟡 Degeneracy detected — applying Bland's Rule"
+            if msg not in result.messages:
+                result.messages.append(msg)
 
-        # ── Row operations ───────────────────────────────────────────
-        pivot_element = tableau[pivot_row, pivot_col]
-        tableau[pivot_row] = tableau[pivot_row] / pivot_element
-
+        tableau[pivot_row] /= tableau[pivot_row, pivot_col]
         for i in range(tableau.shape[0]):
             if i != pivot_row:
-                factor = tableau[i, pivot_col]
-                tableau[i] = tableau[i] - factor * tableau[pivot_row]
+                tableau[i] -= tableau[i, pivot_col] * tableau[pivot_row]
+        tableau[np.abs(tableau) < 1e-10] = 0.0
 
-        # Update basis
         basis[pivot_row - 1] = col_labels[pivot_col]
-
-        # Snapshot
         result.tableaux.append(_snapshot(tableau, col_labels, basis))
 
-    # If we reach here, max iterations exceeded
     result.status = "max_iterations"
     result.iterations = MAX_ITERATIONS
-    result.messages.append(f"Max iterations ({MAX_ITERATIONS}) reached. Problem may be cycling or too large.")
+    result.messages.append(f"Max iterations ({MAX_ITERATIONS}) reached.")
     return result
 
 
-# ── Helper functions ────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────
 
 def _validate_problem(problem: dict):
-    """Validates the problem dictionary structure."""
-    required_keys = ["goal", "variables", "objective", "constraints"]
-    for key in required_keys:
+    required = ["goal", "variables", "objective", "constraints"]
+    for key in required:
         if key not in problem:
             raise ValueError(f"Missing required key: '{key}'")
 
@@ -282,28 +260,30 @@ def _validate_problem(problem: dict):
     if len(problem["objective"]) != num_vars:
         raise ValueError(f"Objective has {len(problem['objective'])} coefficients but {num_vars} variables declared.")
 
+    for x in problem["objective"]:
+        if not isinstance(x, (int, float)):
+            raise ValueError("Only linear programming problems are supported by the Simplex method.")
+
     for i, con in enumerate(problem["constraints"]):
         if "coefficients" not in con or "sign" not in con or "rhs" not in con:
-            raise ValueError(f"Constraint {i+1} is missing required keys (coefficients, sign, rhs).")
+            raise ValueError(f"Constraint {i+1} is missing required keys.")
         if len(con["coefficients"]) != num_vars:
-            raise ValueError(f"Constraint {i+1} has {len(con['coefficients'])} coefficients but {num_vars} variables declared.")
+            raise ValueError(f"Constraint {i+1} coefficient count mismatch.")
         if con["sign"].strip() not in ("<=", ">=", "="):
-            raise ValueError(f"Constraint {i+1} has invalid sign: '{con['sign']}'. Must be <=, >=, or =.")
+            raise ValueError(f"Constraint {i+1} has invalid sign: '{con['sign']}'.")
 
 
 def _is_basic_column(col: np.ndarray) -> bool:
-    """Check if a column is a unit vector (identity column)."""
     ones = 0
     for v in col:
-        if abs(v - 1.0) < 1e-9:
+        if abs(v - 1.0) < EPSILON:
             ones += 1
-        elif abs(v) > 1e-9:
+        elif abs(v) > EPSILON:
             return False
     return ones == 1
 
 
 def _snapshot(tableau: np.ndarray, col_labels: list, basis: list) -> pd.DataFrame:
-    """Create a DataFrame snapshot of the current tableau state."""
     row_labels = ["Z"] + list(basis)
     df = pd.DataFrame(tableau, columns=col_labels, index=row_labels)
     return df.round(4)

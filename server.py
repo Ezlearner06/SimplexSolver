@@ -81,10 +81,16 @@ async def api_solve(request: Request):
     for tab in result.tableaux:
         # We need the columns, index(basis), and data
         data_dict = []
-        for row_label in tab.index:
+        # Use positional indexing to avoid Series extraction on duplicate labels
+        for i, row_label in enumerate(tab.index):
             row_data = {"Basis": str(row_label)}
-            for col_label in tab.columns:
-                row_data[str(col_label)] = tab.loc[row_label, col_label]
+            for j, col_label in enumerate(tab.columns):
+                val = tab.iloc[i, j]
+                # Convert numpy types to native Python floats
+                if isinstance(val, (np.floating, float)):
+                    row_data[str(col_label)] = float(val)
+                else:
+                    row_data[str(col_label)] = val
             data_dict.append(row_data)
         tableaux_list.append({
             "columns": ["Basis"] + [str(c) for c in tab.columns],
@@ -122,6 +128,9 @@ async def api_solve(request: Request):
         "iterations": result.iterations,
         "tableaux": tableaux_list,
         "pivot_cells": pivot_cells,
+        "messages": result.messages,
+        "method_used": result.method_used,
+        "standard_form": result.standard_form,
         "sensitivity": None,
         "graph_json": None
     }

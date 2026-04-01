@@ -292,6 +292,31 @@
                         </div>
                     </div>
 
+                    <!-- Standardized Equations (Collapsible) -->
+                    <details id="res-standard-form-details" class="group border-t border-outline-variant/10 pt-4" open>
+                        <summary class="flex justify-between items-center cursor-pointer list-none ml-1 mb-4 select-none outline-none">
+                            <h4 class="text-xs font-bold font-headline tracking-widest text-on-surface-variant uppercase">Standardized Form</h4>
+                            <span class="material-symbols-outlined text-on-surface-variant transition-transform duration-200 group-open:-rotate-180">expand_more</span>
+                        </summary>
+                        <div class="glass-panel p-6 rounded-xl ghost-border overflow-x-auto font-mono text-sm text-on-surface leading-loose" id="res-standard-equations">
+                            <!-- Injected by JS -->
+                        </div>
+                    </details>
+
+                    <!-- Method Used & Solver Messages (Collapsible) -->
+                    <details id="res-messages-details" class="group pt-2" open>
+                        <summary class="flex justify-between items-center cursor-pointer list-none select-none outline-none">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-primary text-lg">engineering</span>
+                                <span id="res-method-badge" class="text-xs font-bold font-headline tracking-widest text-primary uppercase">Standard Simplex</span>
+                            </div>
+                            <span class="material-symbols-outlined text-primary transition-transform duration-200 group-open:-rotate-180">expand_more</span>
+                        </summary>
+                        <div id="res-messages-list" class="space-y-2 mt-4 ml-8">
+                            <!-- Injected by JS -->
+                        </div>
+                    </details>
+
                     <!-- Variables Matrix -->
                     <div class="space-y-4">
                         <h4 class="text-xs font-bold font-headline tracking-widest text-on-surface-variant uppercase ml-1">Decision Variables</h4>
@@ -413,6 +438,45 @@
                 <span class="font-['Inter'] text-[10px] tracking-[0.1em] uppercase text-[#e2e2e2]/40 hidden md:block">Verifiable v2.4</span>
             </div>
         </footer>
+    <!-- Custom Mismatch Modal -->
+    <div id="mismatch-modal" class="fixed inset-0 z-[100] bg-background/90 backdrop-blur-sm flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="bg-surface-container-high border border-outline-variant/20 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl flex flex-col items-center text-center transform scale-95 transition-transform duration-300" id="mismatch-modal-content">
+            <div class="bg-error/20 text-error rounded-full w-14 h-14 flex items-center justify-center mb-5 ring-4 ring-error/5">
+                <span class="material-symbols-outlined text-3xl">error</span>
+            </div>
+            <h3 class="text-xl font-headline font-bold text-on-surface mb-3">Mode Mismatch Detected</h3>
+            <p id="mismatch-modal-text" class="text-sm font-body text-on-surface-variant leading-relaxed mb-8">
+                <!-- Injected via JS -->
+            </p>
+            <div class="flex items-center justify-center gap-3 w-full">
+                <button id="mismatch-btn-cancel" class="flex-1 px-6 py-2.5 rounded-full bg-surface-container-lowest text-on-surface-variant hover:text-on-surface border border-outline-variant/10 hover:bg-surface-variant/40 transition-colors text-sm font-semibold">
+                    Cancel
+                </button>
+                <button id="mismatch-btn-confirm" class="flex-1 px-6 py-2.5 rounded-full bg-primary text-on-primary hover:bg-primary-container flex items-center justify-center gap-2 text-sm font-bold tracking-wide transition-colors">
+                    <span class="material-symbols-outlined text-[16px]">swap_horiz</span>
+                    <span id="mismatch-btn-confirm-text">Switch Mode</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- Method Not Supported Modal -->
+    <div id="method-modal" class="fixed inset-0 z-[100] bg-background/90 backdrop-blur-sm flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="bg-surface-container-high border border-outline-variant/20 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl flex flex-col items-center text-center transform scale-95 transition-transform duration-300" id="method-modal-content">
+            <div class="bg-yellow-400/15 text-yellow-400 rounded-full w-14 h-14 flex items-center justify-center mb-5 ring-4 ring-yellow-400/5">
+                <span class="material-symbols-outlined text-3xl">info</span>
+            </div>
+            <h3 class="text-xl font-headline font-bold text-on-surface mb-3">Method Not Supported</h3>
+            <p id="method-modal-text" class="text-sm font-body text-on-surface-variant leading-relaxed mb-4">
+                <!-- Injected via JS -->
+            </p>
+            <div id="method-modal-methods" class="flex flex-wrap gap-2 justify-center mb-6">
+                <!-- Method badges injected via JS -->
+            </div>
+            <button id="method-modal-ok" class="px-8 py-2.5 rounded-full bg-primary text-on-primary hover:bg-primary-container text-sm font-bold tracking-wide transition-colors">
+                Got it
+            </button>
+        </div>
+    </div>
     </main>
     <script src="/static/app.js"></script>
 </body>

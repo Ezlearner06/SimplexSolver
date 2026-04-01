@@ -122,6 +122,8 @@ async def api_solve(request: Request):
         "iterations": result.iterations,
         "tableaux": tableaux_list,
         "pivot_cells": pivot_cells,
+        "messages": getattr(result, "messages", []),
+        "preprocessed_problem": getattr(result, "preprocessed_problem", None),
         "sensitivity": None,
         "graph_json": None
     }
